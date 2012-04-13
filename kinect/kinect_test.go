@@ -4,10 +4,26 @@ import (
 	"testing"
 )
 
+var kinect *Kinect
+
 func TestNew(t *testing.T) {
-	kinect, err := New()
+	k, err := New()
 	if err != nil {
 		t.Fatalf("new(): %s", err)
 	}
-	defer kinect.Close()
+	kinect = k
+}
+
+func TestDepthFrame(t *testing.T) {
+	if kinect == nil {
+		return
+	}
+	//kinect.GetDepthFrame()
+}
+
+func TestClose(t *testing.T) {
+	if kinect == nil {
+		return
+	}
+	kinect.Close()
 }
