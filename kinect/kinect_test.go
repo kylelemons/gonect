@@ -2,6 +2,7 @@ package kinect
 
 import (
 	"testing"
+	"runtime/debug"
 )
 
 var kinect *Kinect
@@ -18,12 +19,20 @@ func TestDepthFrame(t *testing.T) {
 	if kinect == nil {
 		return
 	}
-	//kinect.GetDepthFrame()
+	t.Logf("depth is %s", kinect.depth.Info())
+	if err := kinect.GetDepthFrame(); err != nil {
+		t.Errorf("depth: %s", err)
+	}
 }
 
 func TestClose(t *testing.T) {
 	if kinect == nil {
 		return
 	}
+	defer func() {
+		if r := recover(); r != nil {
+			t.Errorf("panic: %v\n%s", r, debug.Stack())
+		}
+	}()
 	kinect.Close()
 }

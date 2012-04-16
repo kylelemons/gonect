@@ -13,7 +13,11 @@ type Kinect struct {
 	mic *usb.Device
 	mot *usb.Device
 
-	depth usb.Endpoint
+	depth      usb.Endpoint
+	depthDone  chan struct{}
+	depthFrame chan bool
+
+	stop chan struct{}
 }
 
 func New() (_k *Kinect, _e error) {
@@ -24,6 +28,7 @@ func New() (_k *Kinect, _e error) {
 			ctx.Close()
 		}
 	}()
+	ctx.Debug(10)
 
 	dev, err := ctx.ListDevices(func(desc *usb.Descriptor) bool {
 		if desc.Vendor != 0x045e { // Microsoft Corp.
@@ -73,9 +78,7 @@ func New() (_k *Kinect, _e error) {
 	}
 
 	//if err := k.SetAngle(+20); err != nil { return nil, err }
-	if err := k.SetAngle(-20); err != nil {
-		return nil, err
-	}
+	//if err := k.SetAngle(-20); err != nil { return nil, err }
 	if err := k.SetAngle(0); err != nil {
 		return nil, err
 	}
@@ -85,9 +88,25 @@ func New() (_k *Kinect, _e error) {
 		return nil, fmt.Errorf("kinect: open depth: %s", err)
 	}
 
+	k.stop       = make(chan struct{}, 1)
+	k.depthDone = make(chan struct{}, 1)
+	k.depthFrame = make(chan bool, 1)
+
+	go k.streamDepth()
+
 	if err := k.initDepth(); err != nil {
 		return nil, fmt.Errorf("kinect: init depth: %s", err)
 	}
+
+	go func() {
+		for {
+			select {
+			case <-time.After(1*time.Hour):
+			case <-k.stop:
+				return
+			}
+		}
+	}()
 
 	return k, nil
 }
@@ -141,16 +160,18 @@ func (k *Kinect) SetAngle(angle int) error {
 func (k *Kinect) initDepth() error {
 	recv := make([]byte, 200)
 
-	// send_cmd(dev, cmd=3, buf=cmd, len=4, rbuf=reply, rlen=4)
-	init0 := SetParam(0x105, 0x00)
-	init1 := SetParam(0x06, 0x00)
-	// depth format?
-	init2 := SetParam(0x13, 0x01)
-	init3 := SetParam(0x14, 0x1e)
-	init4 := SetParam(0x06, 0x02)
-	init5 := SetParam(0x17, 0x00)
+	for i, init := range [][]byte{
+			SetParam(0x105, 0x00),
+			SetParam(0x06, 0x00),
 
-	for i, init := range [][]byte{init0, init1, init2, init3, init4, init5} {
+			// depth format?
+			SetParam(0x12, 0x02),
+
+			SetParam(0x13, 0x01),
+			SetParam(0x14, 0x1e),
+			SetParam(0x06, 0x02),
+			SetParam(0x17, 0x00),
+		} {
 		n, err := k.Command(init, recv)
 		if err != nil {
 			return err
@@ -160,6 +181,7 @@ func (k *Kinect) initDepth() error {
 		if len(val) != 1 || val[0] != 0 {
 			return fmt.Errorf("kinect: camera init #%d failed: %v", i, val)
 		}
+		_ = hdr // TODO(kevlar): do we need this?
 	}
 	return nil
 }
@@ -180,11 +202,43 @@ func (k *Kinect) Command(send, recv []byte) (n int, err error) {
 	return n, err
 }
 
+func (k *Kinect) streamDepth() {
+	defer close(k.depthDone);
+
+	buf := make([]byte, 500000)
+	for {
+		select {
+		case <-k.stop:
+			return
+		default:
+		}
+
+		n, err := k.depth.Read(buf)
+		if err != nil {
+			fmt.Printf("depth error: %s", err)
+			continue
+		}
+		fmt.Printf("Read depth frame: %q\n", string(buf[:n]))
+
+		k.depthFrame <- true
+	}
+}
+
+func (k *Kinect) GetDepthFrame() error {
+	<-k.depthFrame
+	return nil
+}
+
 func (k *Kinect) Close() error {
-	k.mot.Control(0x40, 0x06, 2, 0, nil)
+	//k.mot.Control(0x40, 0x06, 2, 0, nil)
+
+	close(k.stop)
+	<-k.depthDone
+
 	k.mot.Close()
 	k.mic.Close()
 	k.cam.Close()
 	k.ctx.Close()
+
 	return nil
 }
