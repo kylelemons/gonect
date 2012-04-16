@@ -2,6 +2,7 @@ package kinect
 
 import (
 	"fmt"
+	"log"
 	"time"
 
 	"github.com/kylelemons/gousb/usb"
@@ -90,7 +91,7 @@ func New() (_k *Kinect, _e error) {
 
 	k.stop       = make(chan struct{}, 1)
 	k.depthDone = make(chan struct{}, 1)
-	k.depthFrame = make(chan bool, 1)
+	k.depthFrame = make(chan bool, 1000)
 
 	go k.streamDepth()
 
@@ -177,7 +178,7 @@ func (k *Kinect) initDepth() error {
 			return err
 		}
 		hdr, val := DecodeControl(recv[:n])
-		//fmt.Printf("Command [ %x ] returned %#v %v [ %x ]\n", init, hdr, val, recv[:n])
+		fmt.Printf("Command [ %x ] returned %#v %v [ %x ]\n", init, hdr, val, recv[:n])
 		if len(val) != 1 || val[0] != 0 {
 			return fmt.Errorf("kinect: camera init #%d failed: %v", i, val)
 		}
@@ -187,18 +188,20 @@ func (k *Kinect) initDepth() error {
 }
 
 func (k *Kinect) Command(send, recv []byte) (n int, err error) {
-	//fmt.Printf("Command:  %x\n", send)
+	log.Printf("Command:  %x\n", send)
 	if _, err = k.cam.Control(0x40, 0, 0, 0, send); err != nil {
 		return 0, err
 	}
 
 	tries := 0
 	for n == 0 && tries < 1e4 {
+		time.Sleep(5*time.Millisecond)
 		if n, err = k.cam.Control(0xC0, 0, 0, 0, recv); err != nil {
 			return n, err
 		}
 		tries++
 	}
+	log.Printf("Command accepted after %d tries (%x)\n", tries, send)
 	return n, err
 }
 
