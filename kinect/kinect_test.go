@@ -1,9 +1,9 @@
 package kinect
 
 import (
-	"time"
-	"testing"
 	"runtime/debug"
+	"testing"
+	"time"
 )
 
 var kinect *Kinect
@@ -21,7 +21,7 @@ func TestDepthFrame(t *testing.T) {
 		return
 	}
 	t.Logf("depth is %s", kinect.depth.Info())
-	time.Sleep(1*time.Second)
+	time.Sleep(1 * time.Second)
 	if err := kinect.GetDepthFrame(); err != nil {
 		t.Errorf("depth: %s", err)
 	}

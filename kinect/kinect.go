@@ -29,7 +29,6 @@ func New() (_k *Kinect, _e error) {
 			ctx.Close()
 		}
 	}()
-	ctx.Debug(10)
 
 	dev, err := ctx.ListDevices(func(desc *usb.Descriptor) bool {
 		if desc.Vendor != 0x045e { // Microsoft Corp.
@@ -89,7 +88,7 @@ func New() (_k *Kinect, _e error) {
 		return nil, fmt.Errorf("kinect: open depth: %s", err)
 	}
 
-	k.stop       = make(chan struct{}, 1)
+	k.stop = make(chan struct{}, 1)
 	k.depthDone = make(chan struct{}, 1)
 	k.depthFrame = make(chan bool, 1000)
 
@@ -102,7 +101,7 @@ func New() (_k *Kinect, _e error) {
 	go func() {
 		for {
 			select {
-			case <-time.After(1*time.Hour):
+			case <-time.After(1 * time.Hour):
 			case <-k.stop:
 				return
 			}
@@ -110,6 +109,10 @@ func New() (_k *Kinect, _e error) {
 	}()
 
 	return k, nil
+}
+
+func (k *Kinect) Debug(level int) {
+	k.ctx.Debug(level)
 }
 
 func (k *Kinect) SetAngle(angle int) error {
@@ -162,17 +165,17 @@ func (k *Kinect) initDepth() error {
 	recv := make([]byte, 200)
 
 	for i, init := range [][]byte{
-			SetParam(0x105, 0x00),
-			SetParam(0x06, 0x00),
+		SetParam(0x105, 0x00),
+		SetParam(0x06, 0x00),
 
-			// depth format?
-			SetParam(0x12, 0x02),
+		// depth format?
+		SetParam(0x12, 0x02),
 
-			SetParam(0x13, 0x01),
-			SetParam(0x14, 0x1e),
-			SetParam(0x06, 0x02),
-			SetParam(0x17, 0x00),
-		} {
+		SetParam(0x13, 0x01),
+		SetParam(0x14, 0x1e),
+		SetParam(0x06, 0x02),
+		SetParam(0x17, 0x00),
+	} {
 		n, err := k.Command(init, recv)
 		if err != nil {
 			return err
@@ -195,7 +198,7 @@ func (k *Kinect) Command(send, recv []byte) (n int, err error) {
 
 	tries := 0
 	for n == 0 && tries < 1e4 {
-		time.Sleep(5*time.Millisecond)
+		time.Sleep(5 * time.Millisecond)
 		if n, err = k.cam.Control(0xC0, 0, 0, 0, recv); err != nil {
 			return n, err
 		}
@@ -206,10 +209,12 @@ func (k *Kinect) Command(send, recv []byte) (n int, err error) {
 }
 
 func (k *Kinect) streamDepth() {
-	defer close(k.depthDone);
+	defer close(k.depthDone)
 
 	buf := make([]byte, 500000)
 	for {
+		time.Sleep(33 * time.Millisecond)
+
 		select {
 		case <-k.stop:
 			return
@@ -221,6 +226,12 @@ func (k *Kinect) streamDepth() {
 			fmt.Printf("depth error: %s", err)
 			continue
 		}
+
+		if n == 0 {
+			fmt.Printf("Read empty depth frame\n")
+			continue
+		}
+
 		fmt.Printf("Read depth frame: %q\n", string(buf[:n]))
 
 		k.depthFrame <- true
